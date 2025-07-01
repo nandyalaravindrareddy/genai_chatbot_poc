@@ -24,7 +24,7 @@ def load_pdf(path):
     return "\n".join([p.extract_text() for p in reader.pages if p.extract_text()])
 
 # Use GPT to analyze PDF
-llm = ChatOpenAI(model="gpt-4", temperature=0, openai_api_key=OPENAI_API_KEY)
+llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0, openai_api_key=OPENAI_API_KEY)
 
 def analyze_pdf(text):
     prompt = (
@@ -85,7 +85,7 @@ def chunk_text_with_summaries(section_title, section_text):
         chunks.append(chunk_doc)
     return chunks
 
-def store_chunks(sections, one_line_summary, fifteen_line_summary, document_title="sample.pdf"):
+def store_chunks(sections, one_line_summary, fifteen_line_summary, document_title="Comprehensive_Dental_Health_Guide.pdf"):
     docs = []
 
     # Store 1-line and 15-line summary as separate documents
@@ -108,6 +108,7 @@ def store_chunks(sections, one_line_summary, fifteen_line_summary, document_titl
     docs.extend([summary_doc_1, summary_doc_15])
 
     for section in sections:
+        print(section["title"])
         docs.extend(chunk_text_with_summaries(section["title"], section["content"]))
 
     print(f"📄 Total Chunks (including summaries): {len(docs)}")
@@ -115,7 +116,7 @@ def store_chunks(sections, one_line_summary, fifteen_line_summary, document_titl
         list(tqdm(executor.map(vectorstore.add_documents, [[doc] for doc in docs]), total=len(docs)))
 
 if __name__ == "__main__":
-    text = load_pdf("sample.pdf")
+    text = load_pdf("Comprehensive_Dental_Health_Guide.pdf")
     print("🧠 Analyzing PDF with GPT...")
     results = analyze_pdf(text)
 
