@@ -1,4 +1,4 @@
-# chatbot_with_metadata.py (Optimized Version)
+# chatbot_with_metadata.py (Enhanced for Domain Support)
 
 import os
 from dotenv import load_dotenv
@@ -14,7 +14,10 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
 # Set up embedding model and vector store
-embedding_model = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=OPENAI_API_KEY)
+embedding_model = OpenAIEmbeddings(
+    model="text-embedding-ada-002",
+    openai_api_key=OPENAI_API_KEY
+)
 vectorstore = LangchainPinecone(
     index_name=PINECONE_INDEX_NAME,
     embedding=embedding_model,
@@ -30,19 +33,24 @@ llm = ChatOpenAI(
     callbacks=[StreamingStdOutCallbackHandler()]
 )
 
-# Set up retriever with fewer chunks
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-
-def run_query(query):
+def run_query(query, domain_filter):
+    # Build domain filter
+    retriever = vectorstore.as_retriever(
+        search_kwargs={
+            "k": 3,
+            "filter": {"domain": domain_filter.lower()}
+        }
+    )
     docs = retriever.invoke(query)
 
     context = ""
     for doc in docs:
         content = doc.page_content[:700]  # Truncate long content for faster processing
-        context += f"\n\n---\nSection: {doc.metadata.get('section_title', 'N/A')}\nChunk Summary: {doc.metadata.get('chunk_summary', 'N/A')}\nContent: {content}"
+        context += f"\n\n---\nDocument: {doc.metadata.get('document_title', 'N/A')}\nSection: {doc.metadata.get('section_title', 'N/A')}\nChunk Summary: {doc.metadata.get('chunk_summary', 'N/A')}\nContent: {content}"
 
     prompt = f"""
-    Use the following extracted chunks from a document to answer the question. Each chunk has a section title and a brief summary.
+    Use the following extracted chunks from domain '{domain_filter}' to answer the question.
+    Each chunk includes document title, section title, and a brief summary.
 
     {context}
 
@@ -54,9 +62,10 @@ def run_query(query):
     return response.content.strip()
 
 if __name__ == "__main__":
+    domain = input("Enter domain to search within (e.g., health, law): ").strip()
     while True:
         query = input("\nAsk a question (or 'exit' to quit): ")
         if query.lower() in ["exit", "quit"]:
             break
         print("\n💬 Answer:")
-        run_query(query)  # Streaming output will be shown live
+        run_query(query, domain)  # Streaming output will be shown live
