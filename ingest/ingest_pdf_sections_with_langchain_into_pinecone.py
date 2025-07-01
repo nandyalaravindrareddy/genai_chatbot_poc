@@ -1,8 +1,10 @@
-# ingest_pdf_sections_with_langchain_into_pinecone.py (Multi-PDF Directory Version + Section Titles + Summaries)
+# ingest_pdf_sections_with_langchain_into_pinecone.py (Multi-PDF Version + Section Titles + 1-line/15-line Summary + Domain Support)
 
 import os
 import re
 import json
+import sys
+import glob
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -58,7 +60,7 @@ def analyze_pdf(text):
     response = llm.invoke(prompt)
     return json.loads(response.content.strip())
 
-def chunk_and_summarize(section_title, section_text, doc_title):
+def chunk_and_summarize(section_title, section_text, doc_title, domain):
     chunks = text_splitter.create_documents([section_text])
     chunk_docs = []
     for chunk in chunks:
@@ -69,18 +71,19 @@ def chunk_and_summarize(section_title, section_text, doc_title):
             metadata={
                 "document_title": doc_title,
                 "section_title": section_title,
-                "chunk_summary": summary
+                "chunk_summary": summary,
+                "domain": domain
             }
         )
         chunk_docs.append(doc)
     return chunk_docs
 
-def process_pdf(pdf_path):
+def process_pdf(pdf_path, domain):
     print(f"📄 Processing {pdf_path}...")
     text = load_pdf_text(pdf_path)
     doc_title = os.path.basename(pdf_path)
 
-    print("🧠 Asking LLM to analyze {doc_title} PDF...")
+    print(f"🧠 Asking LLM to analyze {doc_title} ...")
     results = analyze_pdf(text)
 
     one_line_summary = results["one_line_summary"]
@@ -92,7 +95,8 @@ def process_pdf(pdf_path):
         metadata={
             "type": "summary",
             "summary_level": "1-line",
-            "document_title": doc_title
+            "document_title": doc_title,
+            "domain": domain
         }
     )
     summary_doc_15 = Document(
@@ -100,14 +104,15 @@ def process_pdf(pdf_path):
         metadata={
             "type": "summary",
             "summary_level": "15-line",
-            "document_title": doc_title
+            "document_title": doc_title,
+            "domain": domain
         }
     )
 
     all_docs = [summary_doc_1, summary_doc_15]
     for section in sections:
         print(f"✂️  Section: {section['title']}")
-        all_docs.extend(chunk_and_summarize(section["title"], section["content"], doc_title))
+        all_docs.extend(chunk_and_summarize(section["title"], section["content"], doc_title, domain))
 
     print(f"🔄 Uploading {len(all_docs)} chunks from {doc_title} to Pinecone...")
     with ThreadPoolExecutor() as executor:
@@ -115,19 +120,22 @@ def process_pdf(pdf_path):
     print(f"✅ {doc_title} uploaded.")
 
 if __name__ == "__main__":
-    import sys
-    import glob
-
-    if len(sys.argv) != 2:
-        print("Usage: python ingest_pdf_sections_with_langchain_into_pinecone.py <directory_path>")
+    if len(sys.argv) < 3:
+        print("Usage: python ingest_pdf_sections_with_langchain_into_pinecone.py <domain> <pdf_path or directory>...")
+        print("eg:python ingest_pdf_sections_with_langchain_into_pinecone.py health /Users/swethanandyala/mywork/iam_automation/projects/pinecone_pdf_chatbot/data/")
         exit(1)
 
-    input_dir = sys.argv[1]
-    pdf_paths = glob.glob(os.path.join(input_dir, "*.pdf"))
+    domain_arg = sys.argv[1].strip().lower()
+    inputs = sys.argv[2:]
+    pdf_files = []
 
-    if not pdf_paths:
-        print(f"No PDFs found in directory: {input_dir}")
-        exit(1)
+    for input_path in inputs:
+        if os.path.isdir(input_path):
+            pdf_files.extend(glob.glob(os.path.join(input_path, "*.pdf")))
+        elif input_path.endswith(".pdf"):
+            pdf_files.append(input_path)
+        else:
+            print(f"⚠️  Skipping unsupported input: {input_path}")
 
-    for pdf in pdf_paths:
-        process_pdf(pdf)
+    for pdf_path in pdf_files:
+        process_pdf(pdf_path, domain=domain_arg)
