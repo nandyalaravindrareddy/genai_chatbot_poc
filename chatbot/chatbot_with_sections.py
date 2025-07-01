@@ -1,10 +1,11 @@
-# chatbot_with_metadata.py
+# chatbot_with_metadata.py (Optimized Version)
 
 import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore as LangchainPinecone
 from langchain.chains import RetrievalQA
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 load_dotenv()
 
@@ -20,19 +21,25 @@ vectorstore = LangchainPinecone(
     pinecone_api_key=PINECONE_API_KEY
 )
 
-# Set up language model
-llm = ChatOpenAI(model="gpt-4", temperature=0, openai_api_key=OPENAI_API_KEY)
+# Use faster model with streaming output
+llm = ChatOpenAI(
+    model="gpt-3.5-turbo",
+    temperature=0,
+    openai_api_key=OPENAI_API_KEY,
+    streaming=True,
+    callbacks=[StreamingStdOutCallbackHandler()]
+)
 
-# Set up retriever
+# Set up retriever with fewer chunks
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
 def run_query(query):
-    # Use `invoke` instead of deprecated `get_relevant_documents`
     docs = retriever.invoke(query)
 
     context = ""
     for doc in docs:
-        context += f"\n\n---\nSection: {doc.metadata.get('section_title', 'N/A')}\nChunk Summary: {doc.metadata.get('chunk_summary', 'N/A')}\nContent: {doc.page_content}"
+        content = doc.page_content[:700]  # Truncate long content for faster processing
+        context += f"\n\n---\nSection: {doc.metadata.get('section_title', 'N/A')}\nChunk Summary: {doc.metadata.get('chunk_summary', 'N/A')}\nContent: {content}"
 
     prompt = f"""
     Use the following extracted chunks from a document to answer the question. Each chunk has a section title and a brief summary.
@@ -51,5 +58,5 @@ if __name__ == "__main__":
         query = input("\nAsk a question (or 'exit' to quit): ")
         if query.lower() in ["exit", "quit"]:
             break
-        answer = run_query(query)
-        print(f"\n💬 Answer: {answer}")
+        print("\n💬 Answer:")
+        run_query(query)  # Streaming output will be shown live
